@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "cassette": "cassettes/demo.json",
+  "trace": ["get_name_*"],
+  "rules": [
+    {
+      "id": "fixed-name",
+      "modes": ["reverse"],
+      "select": {"kind": "python", "name": {"glob": "get_name_*"}},
+      "action": {"type": "mock", "outcome": {"return": "Ryan"}}
+    }
+  ]
+}

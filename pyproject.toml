@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mocker-record-replay"
+version = "0.1.0"
+description = "Rule-driven Python and HTTP boundary recording and replay"
+requires-python = ">=3.12"
+readme = "README.md"
+
+[project.optional-dependencies]
+network = ["mitmproxy>=11,<13"]
+dev = ["pytest>=8", "build>=1"]
+
+[project.scripts]
+mocker = "mocker.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
