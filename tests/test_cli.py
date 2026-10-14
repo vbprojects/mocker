@@ -98,3 +98,53 @@ def test_https_mock_uses_trusted_local_ca_without_upstream(tmp_path):
     result = run('reverse', '--config', config, '--cassette', cassette, '--', sys.executable, client)
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == {'name': 'Ryan'}
+
+
+def test_cli_sample_seed_and_forward_rejection(tmp_path):
+    script = tmp_path / 'program.py'
+    script.write_text('values = [10, 20, 30]\ndef f():\n return values.pop(0)\nfor _ in range(3):\n print(f())')
+    cassette = tmp_path / 'sample.json'
+    result = run('forward', '--runner', 'python', '--trace', 'f', '--cassette', cassette, '--', sys.executable, script)
+    assert result.returncode == 0, result.stderr
+    script.write_text('def f():\n raise AssertionError\nfor _ in range(20):\n print(f())')
+    options = ('reverse', '--runner', 'python', '--sample', '--seed', '42', '--cassette', cassette, '--', sys.executable, script)
+    first, second = run(*options), run(*options)
+    assert first.returncode == second.returncode == 0
+    assert first.stdout == second.stdout
+    assert set(map(int, first.stdout.splitlines())) == {10, 20, 30}
+    result = run('forward', '--sample', '--cassette', tmp_path / 'new.json', '--', sys.executable, script)
+    assert result.returncode == 2
+    assert not (tmp_path / 'new.json').exists()
+
+
+def test_http_proxy_sampled_responses_without_upstream(tmp_path):
+    pytest.importorskip('mitmproxy')
+    class Handler(BaseHTTPRequestHandler):
+        calls = 0
+        def do_GET(self):
+            type(self).calls += 1
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(str(type(self).calls).encode())
+        def log_message(self, *args):
+            pass
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f'http://127.0.0.1:{server.server_port}/status'
+    client = tmp_path / 'client.py'
+    def source(n):
+        return f'import urllib.request\nfor _ in range({n}):\n print(urllib.request.urlopen({url!r}).read().decode())'
+    client.write_text(source(2))
+    cassette = tmp_path / 'http-sample.json'
+    try:
+        result = run('forward', '--cassette', cassette, '--', sys.executable, client)
+        assert result.returncode == 0, result.stderr
+        assert Handler.calls == 2
+    finally:
+        server.shutdown()
+        server.server_close()
+    client.write_text(source(20))
+    result = run('reverse', '--sample', '--seed', '42', '--cassette', cassette, '--', sys.executable, client)
+    assert result.returncode == 0, result.stderr
+    assert len(result.stdout.splitlines()) == 20
+    assert set(result.stdout.splitlines()) == {'1', '2'}

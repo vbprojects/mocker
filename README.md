@@ -30,7 +30,8 @@ mocker tui --config examples/mocker.json
 The UI has three tabs:
 
 - **Configuration:** edit the cassette path, Python scopes, trace names/globs,
-  fixed mock values, canonical rules, and replay miss/consumption policies.
+  fixed mock values, canonical rules, and replay miss/consumption policies. Sampling controls select the input/target
+  pool and an optional repeatable seed.
 - **JSON:** edit the full configuration, including HTTP targets, structured trace
   selectors, and advanced options. Unknown top-level options and structured
   selectors are preserved when using the form. Invalid JSON cannot be saved or run.
@@ -171,6 +172,70 @@ Set `replay.on_miss` or a replay rule's `on_miss` to `record`. Source cassettes
 remain read-only; new interactions go to the separate destination. Existing
 recording destinations are refused. There is no implicit append/overwrite.
 
+## Sample recorded responses in reverse mode
+
+Instead of consuming recordings in order, choose a random recorded outcome on
+each call, **with replacement**:
+
+```bash
+mocker reverse --runner python --cassette cassettes/demo.json \
+  --sample --seed 42 -- python -m myapp
+# The same options work for HTTP requests from executables:
+mocker reverse --cassette cassettes/http.json --sample --seed 42 -- curl https://example.com
+```
+
+Or save the policy in your config (also available in the TUI):
+
+```json
+{
+  "replay": {
+    "consume": "sample",
+    "sample_match": "input",
+    "seed": 42
+  }
+}
+```
+
+`input` samples only occurrences with the same callable/request identity and
+matching inputs. `target` samples the entire pool for that exact Python function
+or HTTP endpoint, ignoring recorded argument/request-input differences. For HTTP,
+a target consists of method, scheme, host/port, and path; query parameters, headers,
+and bodies are ignored by target-wide sampling. Different endpoints and functions
+never share a pool. Use `--sample-match target` to opt into this broader pool (the
+flag also enables sampling).
+
+A specific boundary can override the global policy:
+
+```json
+{
+  "select": {"kind": "python", "name": {"glob": "get_name_*"}},
+  "modes": ["reverse"],
+  "action": {"type": "replay", "consume": "sample", "sample_match": "target"}
+}
+```
+
+Sampling chooses uniformly among recorded **occurrences**, so duplicates retain
+their empirical frequency. It never exhausts a sampled occurrence. Seeded runs
+produce the same sequence for the same pool and call order; concurrent scheduling
+can change the order. Without a seed, runs use fresh randomness. The existing
+`on_miss` policy still applies when no replayable candidate exists. Non-replayable
+outputs are excluded; pickle outputs still require `--trust-pickle`.
+
+Target-wide sampling can also use recordings whose inputs lack a stable JSON
+matcher, as long as their recorded output is replayable. It deliberately ignores
+receiver state and input differences. It does not execute the original function
+or reproduce its side effects. Sampled mutable results are freshly reconstructed.
+Replaying a sampled Python parent retires its skipped descendant recordings while
+keeping that parent reusable; once-consumed recordings are excluded from sample
+pools. Nested or concurrent sampling does not reproduce the original execution.
+
+Try the included example:
+
+```bash
+mocker forward --runner python --config examples/sampling.json -- python examples/sampling.py
+mocker reverse --runner python --config examples/sampling.json -- python examples/sampling.py
+```
+
 ## Storage and replay guarantees
 
 - Versioned JSON cassette plus `<stem>.blobs/` for pickled output values.
@@ -179,14 +244,14 @@ recording destinations are refused. There is no implicit append/overwrite.
 - Pickle replay requires `--trust-pickle`. Only use it for trusted recordings:
   unpickling can execute code. Blob paths are confined and SHA-256 verified.
 - Arguments bind to the callable signature and defaults. Replay inputs must have a
-  lossless JSON representation in this release. Forward capture can store
-  non-JSON inputs as pickle, but marks them non-replayable without a stable
-  matching codec. Matching refuses arbitrary
+  lossless JSON representation for input-matched replay in this release. Forward capture can store
+  non-JSON inputs as pickle, but marks them non-replayable for input matching
+  without a stable matching codec. Target-wide sampling can use their outcomes. Matching refuses arbitrary
   objects, including `self`/`cls`, rather than ignoring receiver state.
   Fixed mocks and live actions can work without serializable arguments.
 - Inputs are snapshotted before execution. Dictionary insertion order matters.
 - Repeated calls consume outcomes once per key; `consume: reuse` reuses the first
-  recorded occurrence. Every mutable JSON/pickle result is reconstructed afresh.
+  recorded occurrence; `consume: sample` samples with replacement. Every mutable JSON/pickle result is reconstructed afresh.
 - Nested Python calls have parent IDs. Replaying a parent consumes its recorded
   descendants so they cannot drift into subsequent calls.
 - Reservations and journal writes are locked. Identical concurrent calls consume

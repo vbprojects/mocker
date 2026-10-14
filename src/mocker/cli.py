@@ -40,6 +40,9 @@ def parser():
         p.add_argument('--trust-pickle', action='store_true')
         p.add_argument('--offline', choices=['policy', 'strict'], default='policy')
         p.add_argument('--network', choices=['none', 'proxy'], default=None)
+        p.add_argument('--sample', action='store_true', help='Sample recorded outcomes with replacement in reverse mode')
+        p.add_argument('--sample-match', choices=['input', 'target'], help='Sample matching inputs or the entire target pool')
+        p.add_argument('--seed', type=int, help='Seed for repeatable replay sampling')
         p.add_argument('program', nargs=argparse.REMAINDER)
     for name in ('validate', 'doctor', 'explain'):
         p = sub.add_parser(name)
@@ -190,6 +193,16 @@ def main(argv=None):
             data['trace'] = data.get('trace', []) + traces
         if args.scope:
             data.setdefault('python', {})['scope'] = args.scope
+        if args.sample or args.sample_match is not None or args.seed is not None:
+            if mode != 'reverse':
+                raise MockerError('sampling options require reverse mode')
+            replay = data.setdefault('replay', {})
+            if args.sample or args.sample_match is not None:
+                replay['consume'] = 'sample'
+            if args.sample_match is not None:
+                replay['sample_match'] = args.sample_match
+            if args.seed is not None:
+                replay['seed'] = args.seed
         network = args.network or data.get('network', {}).get('backend', 'none')
         if network not in ('none', 'proxy'):
             raise MockerError('only explicit proxy network capture is implemented')

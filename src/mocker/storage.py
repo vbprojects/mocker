@@ -97,18 +97,35 @@ class Cassette:
                 os.fsync(stream.fileno())
             self.data['interactions'].append(interaction)
 
-    def take(self, key, consume='once'):
+    def descendants(self, event_id):
+        descendants = {event_id}
+        while True:
+            children = {x['id'] for x in self.data['interactions'] if x.get('parent_id') in descendants}
+            if children <= descendants:
+                return descendants
+            descendants |= children
+
+    def take(self, key, consume='once', *, rng=None, sample_match='input', kind=None, target=None):
         with self.lock:
+            if consume == 'sample':
+                if rng is None:
+                    raise MockerError('sampling requires a random generator')
+                pool = [event for event in sorted(self.data['interactions'], key=lambda e: e['sequence'])
+                        if event['id'] not in self.used
+                        and (event.get('replayability') != 'unsupported'
+                             or (sample_match == 'target' and event.get('matching_error') and event.get('outcome')))
+                        and (event['key'] == key if sample_match == 'input'
+                             else event['kind'] == kind and event['target'] == target)]
+                if not pool:
+                    return None
+                event = rng.choice(pool)
+                # Sample with replacement, but retire skipped descendants of a replayed parent.
+                self.used |= self.descendants(event['id']) - {event['id']}
+                return event
             for event in sorted(self.data['interactions'], key=lambda e: e['sequence']):
                 if event['key'] == key and event['id'] not in self.used:
                     if consume == 'once':
-                        descendants = {event['id']}
-                        while True:
-                            children = {x['id'] for x in self.data['interactions'] if x.get('parent_id') in descendants}
-                            if children <= descendants:
-                                break
-                            descendants |= children
-                        self.used |= descendants
+                        self.used |= self.descendants(event['id'])
                     return event
         return None
 

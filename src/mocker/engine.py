@@ -2,6 +2,7 @@ import contextvars
 import hashlib
 import importlib
 import json
+import random
 import threading
 import time
 import uuid
@@ -24,6 +25,8 @@ class Engine:
         self.config, self.mode, self.source, self.destination = config, mode, source, destination
         self.lock = threading.Lock()
         self.sequence = 0
+        # Simulation sampling only; never used for credentials or security tokens.
+        self.rng = random.Random(config.seed)
 
     def prepare(self, event):
         action, rule = self.config.resolve(event, self.mode)
@@ -38,12 +41,16 @@ class Engine:
             key = fingerprint(event)
             snapshot = json.loads(json.dumps(event))
         except MockerError as exc:
-            if action['type'] != 'record' or not self.destination:
+            target_sampling = (action['type'] == 'replay'
+                               and action.get('consume', self.config.consume) == 'sample'
+                               and action.get('sample_match', self.config.sample_match) == 'target')
+            if not target_sampling and (action['type'] != 'record' or not self.destination):
                 raise
             matching_error = str(exc)
             key = 'unmatchable:' + uuid.uuid4().hex
             try:
-                stored_input = self.destination.encode(event['input'])
+                stored_input = self.destination.encode(event['input']) if self.destination and action['type'] == 'record' else {
+                    'codec': 'unsupported', 'error': matching_error}
             except MockerError as storage_error:
                 stored_input = {'codec': 'unsupported', 'error': str(storage_error)}
             snapshot = {**event, 'input': stored_input}
@@ -55,9 +62,14 @@ class Engine:
         if matching_error:
             record['matching_error'] = matching_error
         if action['type'] == 'replay':
-            hit = self.source.take(key, self.config.consume) if self.source else None
+            consume = action.get('consume', self.config.consume)
+            sample_match = action.get('sample_match', self.config.sample_match)
+            hit = self.source.take(key, consume, rng=self.rng, sample_match=sample_match,
+                                   kind=event['kind'], target=event['target']) if self.source else None
             if hit:
-                if hit.get('replayability') == 'unsupported':
+                matching_only = (consume == 'sample' and sample_match == 'target'
+                                 and hit.get('matching_error') and hit.get('outcome'))
+                if hit.get('replayability') == 'unsupported' and not matching_only:
                     raise MockerError(hit.get('error', 'recording is not replayable'))
                 outcome = hit['outcome']
                 if event['kind'] == 'python':
@@ -67,6 +79,11 @@ class Engine:
             if miss == 'error':
                 raise ReplayMiss(f'no remaining recording for {event["target"]} (key {key})')
             action = {'type': miss}
+            if miss == 'record' and matching_error and self.destination:
+                try:
+                    record['input'] = self.destination.encode(event['input'])
+                except MockerError as exc:
+                    record['input'] = {'codec': 'unsupported', 'error': str(exc)}
         if action['type'] == 'record' and not self.destination:
             raise MockerError('recording requires a separate writable destination cassette')
         return record, action, None

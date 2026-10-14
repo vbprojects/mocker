@@ -61,8 +61,14 @@ class Config:
         replay = self.data.get('replay', {})
         self.on_miss = replay.get('on_miss', 'error')
         self.consume = replay.get('consume', 'once')
-        if self.on_miss not in ('error', 'live', 'record') or self.consume not in ('once', 'reuse'):
+        self.sample_match = replay.get('sample_match', 'input')
+        self.seed = replay.get('seed')
+        if self.on_miss not in ('error', 'live', 'record') or self.consume not in ('once', 'reuse', 'sample'):
             raise MockerError('invalid replay policy')
+        if self.sample_match not in ('input', 'target'):
+            raise MockerError('sample_match must be input or target')
+        if self.seed is not None and type(self.seed) is not int:
+            raise MockerError('replay.seed must be an integer or null')
         for rule in self.rules:
             rule['select'] = selector(rule['select'])
             action = rule['action']
@@ -70,6 +76,10 @@ class Config:
                 raise MockerError('unknown rule action')
             if action.get('on_miss', 'error') not in ('error', 'live', 'record'):
                 raise MockerError('invalid on_miss')
+            if action.get('consume', self.consume) not in ('once', 'reuse', 'sample'):
+                raise MockerError('invalid rule consumption policy')
+            if action.get('sample_match', self.sample_match) not in ('input', 'target'):
+                raise MockerError('sample_match must be input or target')
             if any(x not in ('forward', 'reverse') for x in rule.get('modes', [])):
                 raise MockerError('invalid rule modes')
             if action['type'] == 'mock':

@@ -186,8 +186,17 @@ class MockerApp(App):
                                          value='error', allow_blank=False, id='on-miss')
                         with Vertical(classes='field'):
                             yield Label('Recorded occurrences')
-                            yield Select([('Consume once', 'once'), ('Reuse first outcome', 'reuse')],
+                            yield Select([('Consume once', 'once'), ('Reuse first outcome', 'reuse'),
+                                          ('Sample with replacement', 'sample')],
                                          value='once', allow_blank=False, id='consume')
+                    with Horizontal(classes='row'):
+                        with Vertical(classes='field'):
+                            yield Label('Sampling pool (used only with Sample)')
+                            yield Select([('Matching inputs', 'input'), ('Same target, any inputs', 'target')],
+                                         value='input', allow_blank=False, id='sample-match')
+                        with Vertical(classes='field'):
+                            yield Label('Sampling seed (optional integer)')
+                            yield Input('', placeholder='e.g. 42', id='sample-seed')
                     with Vertical(classes='field'):
                         yield Label('Fixed mocks · JSON list, e.g. [{"get_name_*": "Ryan"}]')
                         yield TextArea('[]', language='json', id='mock')
@@ -274,7 +283,13 @@ class MockerApp(App):
                 raise MockerError(f'{field} must be a JSON list')
             data[field] = values
         data.setdefault('replay', {}).update(on_miss=self.query_one('#on-miss', Select).value,
-                                             consume=self.query_one('#consume', Select).value)
+                                             consume=self.query_one('#consume', Select).value,
+                                             sample_match=self.query_one('#sample-match', Select).value)
+        seed = self.query_one('#sample-seed', Input).value.strip()
+        if seed:
+            data['replay']['seed'] = int(seed)
+        else:
+            data['replay'].pop('seed', None)
         Config(data)
         return data
 
@@ -307,6 +322,9 @@ class MockerApp(App):
             self.query_one('#' + field, TextArea).load_text(json.dumps(data.get(field, []), indent=2))
         self.query_one('#on-miss', Select).value = data.get('replay', {}).get('on_miss', 'error')
         self.query_one('#consume', Select).value = data.get('replay', {}).get('consume', 'once')
+        self.query_one('#sample-match', Select).value = data.get('replay', {}).get('sample_match', 'input')
+        seed = data.get('replay', {}).get('seed')
+        self.query_one('#sample-seed', Input).value = '' if seed is None else str(seed)
         self.query_one('#json-editor', TextArea).load_text(json.dumps(data, indent=2))
         if restore_settings:
             settings = data.get('tui', {})

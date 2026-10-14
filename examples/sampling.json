@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "cassette": "cassettes/names.json",
+  "trace": ["sampling:get_name_user"],
+  "replay": {
+    "consume": "sample",
+    "sample_match": "input",
+    "seed": 42
+  }
+}

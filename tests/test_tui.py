@@ -177,3 +177,20 @@ def test_new_edits_require_discard_confirmation():
 def test_invalid_ui_settings_rejected(data):
     with pytest.raises(MockerError):
         parse_document(json.dumps(data))
+
+
+def test_sampling_controls_round_trip(tmp_path):
+    async def scenario():
+        config = tmp_path / 'sampling.json'
+        config.write_text(json.dumps({'cassette': 'a.json', 'replay': {
+            'consume': 'sample', 'sample_match': 'target', 'seed': 42}}))
+        app = MockerApp(str(config))
+        async with app.run_test(size=(100, 35)) as pilot:
+            await pilot.pause()
+            assert app.query_one('#consume', Select).value == 'sample'
+            assert app.query_one('#sample-match', Select).value == 'target'
+            assert app.query_one('#sample-seed', Input).value == '42'
+            app.query_one('#sample-seed', Input).value = '123'
+            app.action_save()
+            assert json.loads(config.read_text())['replay']['seed'] == 123
+    asyncio.run(scenario())
