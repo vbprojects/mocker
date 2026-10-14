@@ -26,6 +26,8 @@ def trace_file(path):
 def parser():
     root = argparse.ArgumentParser(prog='mocker')
     sub = root.add_subparsers(dest='command', required=True)
+    p = sub.add_parser('tui', help='Edit configurations and run programs interactively')
+    p.add_argument('--config', help='Configuration file to open')
     for name in ('forward', 'record', 'reverse', 'replay'):
         p = sub.add_parser(name)
         p.add_argument('--config')
@@ -142,6 +144,15 @@ def run_proxy(program, config, mode, source, destination):
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
+        if args.command == 'tui':
+            try:
+                from .tui import MockerApp
+            except ModuleNotFoundError as exc:
+                if exc.name == 'textual':
+                    raise MockerError('install terminal UI support: pip install "mocker-record-replay[tui]"') from exc
+                raise
+            MockerApp(config_path=args.config).run()
+            return 0
         if args.command == 'recover':
             Cassette.recover(args.journal, args.output)
             return 0

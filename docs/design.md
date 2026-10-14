@@ -5,7 +5,10 @@ separate. `Config` compiles shorthand and resolves shared rules; `Engine` decide
 whether to execute or supply an outcome; `Cassette` stores typed results and
 reserves occurrences. `Instrumentor` wraps source definitions using an AST
 transform and a scoped source import loader. `Addon` adapts mitmproxy HTTP flows
-into the same normalized events. The CLI launches either the instrumented Python
+into the same normalized events. The optional Textual UI edits the same JSON
+configuration and launches the ordinary CLI in an asynchronous subprocess. It
+keeps UI state under `tui`, preserves advanced configuration fields, and uses a
+temporary config snapshot for each run. The CLI launches either the instrumented Python
 entrypoint or an executable configured to use a local proxy.
 
 The cassette envelope includes ID, kind, target, logical input, fingerprint,

@@ -18,6 +18,47 @@ The core has no runtime dependencies. The optional `network` extra supplies
 mitmproxy. Use a virtual environment so the `mocker` and `mitmdump` commands are
 on PATH.
 
+## Terminal UI
+
+```bash
+python -m pip install -e '.[tui,network]'
+mocker tui
+# Open an existing config:
+mocker tui --config examples/mocker.json
+```
+
+The UI has three tabs:
+
+- **Configuration:** edit the cassette path, Python scopes, trace names/globs,
+  fixed mock values, canonical rules, and replay miss/consumption policies.
+- **JSON:** edit the full configuration, including HTTP targets, structured trace
+  selectors, and advanced options. Unknown top-level options and structured
+  selectors are preserved when using the form. Invalid JSON cannot be saved or run.
+- **Run & output:** enter a program command, working directory, forward/reverse
+  mode, and Python or executable/HTTP runner. Optional partial-replay destination
+  and explicit pickle trust are available. Output streams while the UI stays
+  responsive; send line-based input or close stdin from the bottom controls.
+
+Use **New**, **Open**, **Save**, and **Validate** at the top. **Ctrl+S** saves,
+**Ctrl+O** opens the path entered at the top, **F5** runs, **F6** or **Ctrl+C**
+stops, and **Ctrl+Q** quits. Changing New/Open or quitting with unsaved edits
+prompts before discarding them. Stop the running program before quitting.
+
+A saved config includes run settings under `tui`; the existing CLI ignores that
+section. Relative config file paths resolve from the directory where the TUI
+started. Relative cassette and program paths resolve from the selected program
+working directory. Runs use a temporary snapshot of the current edits, so they
+also work before saving and do not silently overwrite the config file.
+
+Commands are split into arguments without a shell: quoted spaces work; pipes,
+redirects, environment assignments, and shell expansions are not interpreted.
+Use an explicit shell command if your program needs those features. This is a
+line-oriented runner, not a PTY: programs requiring terminal control or password
+prompts should be run through the ordinary CLI. Stop interrupts the process group
+on POSIX, allows three seconds for cassette finalization, and then kills remaining
+descendants. Windows uses `taskkill /T /F`. Forced termination can leave a journal
+requiring recovery. Core offline and interception limitations still apply.
+
 ## Python recording and replay
 
 ```bash
