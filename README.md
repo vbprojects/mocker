@@ -4,7 +4,7 @@ A Python package and CLI for recording and replaying selected Python function
 outcomes and HTTP(S) requests from proxy-aware executables. One selector/rule
 engine drives capture, replay, fixed substitutions, live exceptions, and blocking.
 
-**Status:** initial implementation, Python 3.12+. The distribution name is
+**Status:** initial implementation, Python 3.11+. The distribution name is
 `mocker-record-replay`; the import and command are `mocker`. This project has
 not been published to PyPI.
 

@@ -10,7 +10,7 @@ import pytest
 
 def run(*args, cwd=None):
     env = os.environ.copy()
-    env['PATH'] = str(Path.home() / '.local/bin') + os.pathsep + env['PATH']
+    env['PATH'] = str(Path(sys.executable).parent) + os.pathsep + env['PATH']
     return subprocess.run([sys.executable, '-m', 'mocker', *map(str, args)], cwd=cwd,
                           env=env, capture_output=True, text=True, timeout=40)
 
