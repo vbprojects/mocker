@@ -18,6 +18,12 @@ The core has no runtime dependencies. The optional `network` extra supplies
 mitmproxy. Use a virtual environment so the `mocker` and `mitmdump` commands are
 on PATH.
 
+## Help and agent guide
+
+Run `mocker -h` or `mocker --help` for a quick-start guide and
+`mocker <command> --help` for command options. See [AGENTS.md](AGENTS.md) for
+configuration fields, selector/rule semantics, run recipes and agent workflows.
+
 ## Terminal UI
 
 ```bash

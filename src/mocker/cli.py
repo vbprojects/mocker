@@ -24,35 +24,71 @@ def trace_file(path):
 
 
 def parser():
-    root = argparse.ArgumentParser(prog='mocker')
+    root = argparse.ArgumentParser(
+        prog='mocker',
+        description='Record Python function outcomes or HTTP requests, then replay or sample them.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Quick start (run from the repository root):
+  # Record selected Python functions, then replay their recorded outcomes:
+  mocker forward --runner python --cassette cassettes/demo.json --trace 'demo:get_name_*' -- python examples/demo.py
+  mocker reverse --runner python --cassette cassettes/demo.json -- python examples/demo.py
+
+  # Use a saved JSON config or open the interactive editor:
+  mocker validate --config examples/mocker.json
+  mocker forward --runner python --config examples/mocker.json -- python examples/demo.py
+  mocker tui --config examples/mocker.json
+
+  # Sample recorded outcomes with replacement (reverse only):
+  mocker reverse --runner python --cassette cassettes/demo.json --sample --seed 42 -- python examples/demo.py
+
+  # Record/replay HTTP from a proxy-aware executable (network extra required):
+  mocker forward --cassette cassettes/http.json -- curl http://example.com
+  mocker reverse --cassette cassettes/http.json -- curl http://example.com
+
+Configuration and execution:
+  Put Mocker options before -- and the target command after it.
+  --runner python uses this interpreter; use --scope myapp for imported code.
+  The default exec runner uses an HTTP proxy; HTTPS clients must trust its CA.
+  Recording requires a fresh cassette path; existing files are not overwritten.
+  Reverse restores config from the cassette unless --config is supplied.
+  Replay does not reproduce side effects or enforce OS network isolation.
+  Install optional features from a checkout: python -m pip install -e '.[tui,network]'
+
+More help: mocker <command> --help
+Config and agent guide: AGENTS.md in https://github.com/vbprojects/mocker
+""")
     sub = root.add_subparsers(dest='command', required=True)
     p = sub.add_parser('tui', help='Edit configurations and run programs interactively')
     p.add_argument('--config', help='Configuration file to open')
     for name in ('forward', 'record', 'reverse', 'replay'):
-        p = sub.add_parser(name)
-        p.add_argument('--config')
-        p.add_argument('--cassette')
-        p.add_argument('--write-cassette')
-        p.add_argument('--runner', choices=['python', 'exec'], default='exec')
-        p.add_argument('--trace', action='append', default=[])
-        p.add_argument('--trace-file', action='append', default=[])
-        p.add_argument('--scope', action='append', default=[])
-        p.add_argument('--trust-pickle', action='store_true')
-        p.add_argument('--offline', choices=['policy', 'strict'], default='policy')
-        p.add_argument('--network', choices=['none', 'proxy'], default=None)
+        p = sub.add_parser(name, help=(
+            'Record selected boundaries' if name in ('forward', 'record')
+            else 'Replay or sample recorded outcomes'))
+        p.add_argument('--config', help='JSON configuration file (see AGENTS.md)')
+        p.add_argument('--cassette', help='Recording destination or replay source; overrides config.cassette')
+        p.add_argument('--write-cassette', help='Separate fresh destination for reverse-mode recording fallback')
+        p.add_argument('--runner', choices=['python', 'exec'], default='exec', help='python: instrument source; exec: HTTP proxy for a child command (default)')
+        p.add_argument('--trace', action='append', default=[], help='Python name or module:qualified_name, with globs; repeatable')
+        p.add_argument('--trace-file', action='append', default=[], help='Selector lines or JSON array; repeatable')
+        p.add_argument('--scope', action='append', default=[], help='Import root to instrument, e.g. myapp; repeatable')
+        p.add_argument('--trust-pickle', action='store_true', help='Allow loading trusted pickle outcomes (can execute code)')
+        p.add_argument('--offline', choices=['policy', 'strict'], default='policy', help='policy: replay rules only; strict: unsupported, refuses to launch')
+        p.add_argument('--network', choices=['none', 'proxy'], default=None, help='Network backend; exec always uses proxy; python cannot use proxy')
         p.add_argument('--sample', action='store_true', help='Sample recorded outcomes with replacement in reverse mode')
         p.add_argument('--sample-match', choices=['input', 'target'], help='Sample matching inputs or the entire target pool')
         p.add_argument('--seed', type=int, help='Seed for repeatable replay sampling')
-        p.add_argument('program', nargs=argparse.REMAINDER)
+        p.add_argument('program', nargs=argparse.REMAINDER, help='Target command after --; Python runner accepts a script or -m module')
     for name in ('validate', 'doctor', 'explain'):
-        p = sub.add_parser(name)
+        p = sub.add_parser(name, help={'validate': 'Check a JSON configuration',
+                                      'doctor': 'Report configuration and runtime capabilities',
+                                      'explain': 'Show the rule selected for an event JSON file'}[name])
         p.add_argument('--config', required=True)
         if name == 'explain':
             p.add_argument('--event', required=True)
             p.add_argument('--mode', choices=['forward', 'reverse'], default='reverse')
-    p = sub.add_parser('inspect')
+    p = sub.add_parser('inspect', help='Summarize a cassette without unpickling')
     p.add_argument('cassette')
-    p = sub.add_parser('recover')
+    p = sub.add_parser('recover', help='Recover an interrupted recording journal')
     p.add_argument('journal')
     p.add_argument('--output', required=True)
     return root
